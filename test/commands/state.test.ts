@@ -186,6 +186,7 @@ describe("state commands", () => {
           ok: boolean;
           action: string;
           pruned: number;
+          pruned_ids: string[];
           task: {
             id: string;
             state: string;
@@ -195,6 +196,7 @@ describe("state commands", () => {
         expect(parsed.ok).toBe(true);
         expect(parsed.action).toBe("done");
         expect(parsed.pruned).toBe(0);
+        expect(parsed.pruned_ids).toEqual([]);
         expect(parsed.task.state).toBe("done");
         expect(parsed.task.links).toContainEqual({
           kind: "pr",
@@ -215,6 +217,84 @@ describe("state commands", () => {
       }
     });
 
+    it("names the ids that left the backlog when auto-pruning", async () => {
+      const b = makeBacklog(
+        [
+          "# Backlog",
+          "",
+          "## Queued",
+          "- [ ] keep-me - stay newest",
+          "",
+          "## Done",
+          "- [x] old-a - first surplus (done 2026-06-01)",
+          "- [x] old-b - second surplus (done 2026-06-02)",
+          "",
+        ].join("\n"),
+      );
+      try {
+        const out = await doneCommand(["keep-me", "--keep", "1"], b.ctx);
+        expect(out).toContain("ok: done keep-me -> Done; pruned 2 (old-a, old-b)");
+        expect(b.read()).toContain("- [x] keep-me");
+        expect(b.read()).not.toContain("old-a");
+        expect(b.read()).not.toContain("old-b");
+        expect(b.archive()).toContain("old-a");
+        expect(b.archive()).toContain("old-b");
+
+        const jsonOut = await doneCommand(
+          ["keep-me", "--keep", "1", "--json"],
+          b.ctx,
+        );
+        const parsed = JSON.parse(jsonOut) as {
+          already: boolean;
+          pruned: number;
+          pruned_ids: string[];
+        };
+        expect(parsed.already).toBe(true);
+        expect(parsed.pruned).toBe(0);
+        expect(parsed.pruned_ids).toEqual([]);
+      } finally {
+        b.cleanup();
+      }
+    });
+
+    it("emits pruned_ids for the surplus Done items under --json", async () => {
+      const b = makeBacklog(
+        [
+          "# Backlog",
+          "",
+          "## Queued",
+          "- [ ] keep-me - stay newest",
+          "",
+          "## Done",
+          "- [x] old-a - first surplus (done 2026-06-01)",
+          "- [x] old-b - second surplus (done 2026-06-02)",
+          "",
+        ].join("\n"),
+      );
+      try {
+        const out = await doneCommand(
+          ["keep-me", "--keep", "1", "--json"],
+          b.ctx,
+        );
+        const parsed = JSON.parse(out) as {
+          ok: boolean;
+          action: string;
+          pruned: number;
+          pruned_ids: string[];
+          task: { id: string; state: string };
+        };
+        expect(parsed).toMatchObject({
+          ok: true,
+          action: "done",
+          pruned: 2,
+          pruned_ids: ["old-a", "old-b"],
+          task: { id: "keep-me", state: "done" },
+        });
+      } finally {
+        b.cleanup();
+      }
+    });
+
     it("retries prune when the task is already done", async () => {
       const b = makeBacklog(undefined, "2026-07-01");
       const archivePath = join(b.dir, "done-archive.md");
@@ -228,7 +308,7 @@ describe("state commands", () => {
         rmSync(archivePath, { recursive: true, force: true });
         const out = await doneCommand(["cert-cleanup", "--keep", "2"], b.ctx);
         expect(out).toContain("already: true");
-        expect(out).toMatch(/; pruned [1-9]/);
+        expect(out).toMatch(/; pruned [1-9]\d* \([a-z0-9-]+/);
         expect(b.archive()).toContain("## Archived");
       } finally {
         b.cleanup();
