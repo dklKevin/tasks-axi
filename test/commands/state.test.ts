@@ -233,7 +233,9 @@ describe("state commands", () => {
       );
       try {
         const out = await doneCommand(["keep-me", "--keep", "1"], b.ctx);
-        expect(out).toContain("ok: done keep-me -> Done; pruned 2 (old-a, old-b)");
+        expect(out).toContain(
+          "ok: done keep-me -> Done; pruned 2 (old-a, old-b)",
+        );
         expect(b.read()).toContain("- [x] keep-me");
         expect(b.read()).not.toContain("old-a");
         expect(b.read()).not.toContain("old-b");
