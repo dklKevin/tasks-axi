@@ -32,7 +32,8 @@ describe("maintenance commands", () => {
         expect(parsed.state).toBe("done");
         expect(parsed.kept).toBe(2);
         expect(parsed.archived).toBeGreaterThan(0);
-        expect(Array.isArray(parsed.ids)).toBe(true);
+        expect(parsed.ids).toEqual(["fork-fix-k4", "multi-line-w8"]);
+        expect(parsed.archived).toBe(parsed.ids.length);
         expect(out).not.toContain("help[");
       } finally {
         b.cleanup();
